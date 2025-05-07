@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学習管理ページ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+
+        .tab-button {
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .tab-button.active {
+            border-bottom-color: #4f46e5; /* Indigo */
+            color: #4f46e5;
+        }
+        
+        .card {
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .course-item img {
+            width: 80px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 0.25rem;
+        }
+        
+        .progress-bar-bg {
+            background-color: #e5e7eb; /* Gray-200 */
+            border-radius: 0.25rem;
+            overflow: hidden;
+        }
+        .progress-bar {
+            background-color: #4f46e5; /* Indigo-600 */
+            height: 100%;
+            transition: width 0.5s ease-in-out;
+            text-align: center;
+            color: white;
+            font-size: 0.75rem;
+            line-height: 1rem; /* For vertical centering of text if needed */
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 220px;
+            background-color: #555;
+            color: #fff;
+            text-align: left;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -110px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.8rem;
+            line-height: 1.2;
+        }
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #555 transparent transparent transparent;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 100; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto; /* 15% from the top and centered */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%; /* Could be more or less, depending on screen size */
+            max-width: 500px;
+            border-radius: 0.5rem;
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+
+<body class="p-4 md:p-8">
+    <div class="container mx-auto max-w-6xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-gray-800">学習管理ページ</h1>
+            <p class="text-gray-600 mt-2">履修状況を確認し、卒業要件をチェックしましょう。</p>
+        </header>
+
+        <div class="mb-6 border-b border-gray-300">
+            <nav class="flex" aria-label="Tabs">
+                <button class="tab-button active" data-tab="courseSelectionTab">講義選択</button>
+                <button class="tab-button" data-tab="myCoursesTab">履修中講義</button>
+                <button class="tab-button" data-tab="graduationCheckTab">卒業要件チェック</button>
+                <button class="tab-button" data-tab="dataManagementTab">データ管理</button>
+            </nav>
+        </div>
+
+        <div id="courseSelectionTab" class="tab-content ">
+            <div class="card">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-700">講義を検索・選択</h2>
+                <div class="mb-4">
+                    <input type="text" id="searchInput" placeholder="講義名、科目コードなどで検索..."
+                        class="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div id="allCourses" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto p-2">
+                    <p id="loadingMessage" class="text-gray-500 col-span-full text-center">講義データを読み込み中...</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="myCoursesTab" class="tab-content hidden">
+            <div class="card">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-700">履修中の講義一覧</h2>
+                <div id="selectedCoursesList" class="space-y-3">
+                    <p class="text-gray-500">まだ講義が選択されていません。</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="graduationCheckTab" class="tab-content hidden">
+            <div class="card">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-700">卒業要件達成状況</h2>
+                <div id="graduationStatus" class="space-y-4">
+                    </div>
+            </div>
+        </div>
+        
+        <div id="dataManagementTab" class="tab-content hidden">
+            <div class="card">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-700">履修データ管理</h2>
+                <div class="space-y-4">
+                    <div>
+                        <button id="exportDataButton"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition duration-150 ease-in-out">
+                            履修科目コードをエクスポート
+                        </button>
+                        <p class="text-xs text-gray-500 mt-1">選択した講義の科目コードをテキストファイルでエクスポートします。</p>
+                    </div>
+                    <div>
+                        <label for="importDataInput" class="block text-sm font-medium text-gray-700 mb-1">履修科目コードをインポート:</label>
+                        <textarea id="importDataInput" rows="4"
+                            class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="ここに科目コードを改行区切りで貼り付け"></textarea>
+                        <button id="importDataButton"
+                            class="mt-2 w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition duration-150 ease-in-out">
+                            インポート実行
+                        </button>
+                         <p class="text-xs text-gray-500 mt-1">エクスポートした科目コードを貼り付けて履修状況を復元します。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="messageModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="closeModalButton">&times;</span>
+            <p id="modalMessageText" class="text-gray-700"></p>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const tabs = document.querySelectorAll('.tab-button');
+        const tabContents = document.querySelectorAll('.tab-content');
+        const searchInput = document.getElementById('searchInput');
+        const allCoursesContainer = document.getElementById('allCourses');
+        const selectedCoursesList = document.getElementById('selectedCoursesList');
+        const graduationStatusContainer = document.getElementById('graduationStatus');
+        const exportDataButton = document.getElementById('exportDataButton');
+        const importDataInput = document.getElementById('importDataInput');
+        const importDataButton = document.getElementById('importDataButton');
+        const loadingMessage = document.getElementById('loadingMessage');
+
+        const messageModal = document.getElementById('messageModal');
+        const modalMessageText = document.getElementById('modalMessageText');
+        const closeModalButton = document.getElementById('closeModalButton');
+
+        // State
+        let allFetchedCourses = [];
+        let selectedCourses = [];
+
+        // --- Utility Functions ---
+        function parseCredits(creditString) {
+            if (!creditString) return 0;
+            const match = creditString.match(/(\d+)\s*単位/);
+            return match ? parseInt(match[1], 10) : 0;
+        }
+
+        function showModal(message) {
+            modalMessageText.textContent = message;
+            messageModal.style.display = "block";
+        }
+
+        closeModalButton.onclick = function() {
+            messageModal.style.display = "none";
+        }
+
+        window.onclick = function(event) {
+            if (event.target == messageModal) {
+                messageModal.style.display = "none";
+            }
+        }
+        
+        // --- Tab Navigation ---
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(item => item.classList.remove('active'));
+                tab.classList.add('active');
+
+                const targetTab = tab.getAttribute('data-tab');
+                tabContents.forEach(content => {
+                    if (content.id === targetTab) {
+                        content.classList.remove('hidden');
+                    } else {
+                        content.classList.add('hidden');
+                    }
+                });
+                if (targetTab === 'myCoursesTab') renderSelectedCourses();
+                if (targetTab === 'graduationCheckTab') renderGraduationStatus();
+            });
+        });
+
+        // --- API Fetching and Course Display ---
+        async function fetchLectures() {
+            const baseUrl = 'https://api.syllabus.zen.ac.jp/search';
+            let currentPage = 0;
+            let totalPages = 1; 
+            let accumulatedCoursesRaw = []; // Store raw subject objects from API to check for duplicates by code
+
+            loadingMessage.textContent = '講義データを読み込み中 (0%)...';
+            loadingMessage.classList.remove('hidden');
+
+            try {
+                while (currentPage < totalPages) {
+                    const response = await fetch(`${baseUrl}?page=${currentPage}`);
+                    if (!response.ok) {
+                        throw new Error(`APIリクエストエラー (ページ ${currentPage}): ${response.status} ${response.statusText}`);
+                    }
+                    const data = await response.json();
+                    
+                    if (data.totalPages) {
+                        totalPages = data.totalPages;
+                    }
+
+                    if (data.subjects && Array.isArray(data.subjects)) {
+                        // Add subjects only if they are not already in accumulatedCoursesRaw (based on code)
+                        data.subjects.forEach(subject => {
+                            if (!accumulatedCoursesRaw.some(existingCourse => existingCourse.code === subject.code)) {
+                                accumulatedCoursesRaw.push(subject);
+                            }
+                        });
+                    }
+                    
+                    currentPage++;
+                    const progressPercent = Math.round((currentPage / totalPages) * 100);
+                    loadingMessage.textContent = `講義データを読み込み中 (${progressPercent}%)... 全 ${totalPages} ページ中 ${currentPage} ページ完了`;
+                }
+
+                // Now map the unique raw courses to the format used by the application
+                allFetchedCourses = accumulatedCoursesRaw.map(course => ({
+                    id: course.code, 
+                    code: course.code,
+                    name: course.name,
+                    description: course.description,
+                    credits: parseCredits(course.metadata?.credit),
+                    thumbnailUrl: course.thumbnailUrl || 'https://placehold.co/80x60/e2e8f0/cbd5e0?text=NoImage',
+                    rawCourseData: course 
+                }));
+                
+                loadingMessage.classList.add('hidden');
+                renderAllCourses(allFetchedCourses); 
+                console.log(`全 ${allFetchedCourses.length} 件のユニークな講義データを取得しました。`);
+
+            } catch (error) {
+                console.error('講義データの取得に失敗しました:', error);
+                loadingMessage.textContent = '講義データの取得に失敗しました。コンソールで詳細を確認してください。';
+                showModal(`講義データの取得に失敗しました: ${error.message}`);
+            }
+        }
+
+
+        function renderAllCourses(coursesToRender) {
+            allCoursesContainer.innerHTML = ''; 
+            if (coursesToRender.length === 0 && !loadingMessage.classList.contains('hidden')) {
+                 allCoursesContainer.innerHTML = '<p class="text-gray-500 col-span-full text-center">該当する講義が見つかりません。</p>';
+                 return;
+            }
+             if (coursesToRender.length === 0 && loadingMessage.classList.contains('hidden')) {
+                 allCoursesContainer.innerHTML = '<p class="text-gray-500 col-span-full text-center">該当する講義が見つかりません。</p>';
+                 return;
+            }
+
+            coursesToRender.forEach(course => {
+                const isSelected = selectedCourses.some(sc => sc.id === course.id);
+                const courseCard = document.createElement('div');
+                courseCard.className = 'course-item p-4 border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow bg-white flex flex-col justify-between';
+                courseCard.innerHTML = `
+                    <div class="flex items-start space-x-3 mb-3">
+                        <img src="${course.thumbnailUrl}" alt="${course.name}" class="w-20 h-16 object-cover rounded-md flex-shrink-0" onerror="this.onerror=null;this.src='https://placehold.co/80x60/e2e8f0/cbd5e0?text=NoImage';">
+                        <div>
+                            <h3 class="font-semibold text-gray-800 text-sm">${course.name}</h3>
+                            <p class="text-xs text-gray-500">${course.code} - ${course.credits}単位</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-600 mb-3 flex-grow overflow-hidden" style="max-height: 3.6em; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;">${course.description || '説明なし'}</p>
+                    <button data-course-id="${course.id}" class="add-course-btn w-full text-sm py-2 px-3 rounded-md transition-colors ${isSelected ? 'bg-gray-400 text-gray-700 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}" ${isSelected ? 'disabled' : ''}>
+                        ${isSelected ? '追加済み' : '履修追加'}
+                    </button>
+                `;
+                allCoursesContainer.appendChild(courseCard);
+            });
+
+            document.querySelectorAll('.add-course-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const courseId = e.target.getAttribute('data-course-id');
+                    const courseToAdd = allFetchedCourses.find(c => c.id === courseId);
+                    if (courseToAdd && !selectedCourses.some(sc => sc.id === courseId)) {
+                        selectedCourses.push(courseToAdd);
+                        saveSelectedCourses();
+                        renderSelectedCourses();
+                        renderGraduationStatus();
+                        e.target.textContent = '追加済み';
+                        e.target.disabled = true;
+                        e.target.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+                        e.target.classList.add('bg-gray-400', 'text-gray-700', 'cursor-not-allowed');
+                        console.log(`「${courseToAdd.name}」を履修リストに追加しました。`);
+                    }
+                });
+            });
+        }
+        
+        function renderSelectedCourses() {
+            selectedCoursesList.innerHTML = '';
+            if (selectedCourses.length === 0) {
+                selectedCoursesList.innerHTML = '<p class="text-gray-500">まだ講義が選択されていません。「講義選択」タブから追加してください。</p>';
+                return;
+            }
+
+            selectedCourses.forEach(course => {
+                const listItem = document.createElement('div');
+                listItem.className = 'p-4 border border-gray-200 rounded-lg shadow-sm bg-white flex items-center justify-between';
+                listItem.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <img src="${course.thumbnailUrl}" alt="${course.name}" class="w-16 h-12 object-cover rounded-md flex-shrink-0" onerror="this.onerror=null;this.src='https://placehold.co/64x48/e2e8f0/cbd5e0?text=NoImage';">
+                        <div>
+                            <h4 class="font-medium text-gray-800">${course.name}</h4>
+                            <p class="text-sm text-gray-500">${course.code} - ${course.credits}単位</p>
+                        </div>
+                    </div>
+                    <button data-course-id="${course.id}" class="remove-course-btn bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3 rounded-md transition-colors">削除</button>
+                `;
+                selectedCoursesList.appendChild(listItem);
+            });
+
+            document.querySelectorAll('.remove-course-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const courseIdToRemove = e.target.getAttribute('data-course-id');
+                    const courseName = selectedCourses.find(c => c.id === courseIdToRemove)?.name || "選択された講義";
+                    selectedCourses = selectedCourses.filter(c => c.id !== courseIdToRemove);
+                    saveSelectedCourses();
+                    renderSelectedCourses(); 
+                    renderGraduationStatus(); 
+                    renderAllCourses(allFetchedCourses.filter(c => { 
+                        const searchTerm = searchInput.value.toLowerCase();
+                        return c.name.toLowerCase().includes(searchTerm) || c.code.toLowerCase().includes(searchTerm);
+                    }));
+                    console.log(`「${courseName}」を履修リストから削除しました。`);
+                });
+            });
+        }
+
+        searchInput.addEventListener('input', () => {
+            const searchTerm = searchInput.value.toLowerCase();
+            const filteredCourses = allFetchedCourses.filter(course => {
+                return course.name.toLowerCase().includes(searchTerm) || 
+                       course.code.toLowerCase().includes(searchTerm) ||
+                       (course.description && course.description.toLowerCase().includes(searchTerm));
+            });
+            renderAllCourses(filteredCourses);
+        });
+
+        function saveSelectedCourses() {
+            const selectedCourseCodes = selectedCourses.map(course => course.code);
+            localStorage.setItem('selectedSyllabusCourseCodes', JSON.stringify(selectedCourseCodes));
+        }
+
+        function loadSelectedCourses() {
+            const storedCourseCodes = localStorage.getItem('selectedSyllabusCourseCodes');
+            if (storedCourseCodes && allFetchedCourses.length > 0) { 
+                const codes = JSON.parse(storedCourseCodes);
+                selectedCourses = codes.map(code => allFetchedCourses.find(course => course.code === code)).filter(course => course !== undefined);
+            } else if (storedCourseCodes && allFetchedCourses.length === 0) {
+                console.warn("Stored codes found, but all courses not yet fetched. Will attempt to load after fetch.");
+            }
+        }
+        
+        // --- Data Export/Import (Course Codes Only) ---
+        exportDataButton.addEventListener('click', () => {
+            if (selectedCourses.length === 0) {
+                showModal('エクスポートする履修中講義がありません。');
+                return;
+            }
+            try {
+                const courseCodes = selectedCourses.map(course => course.code).join('\n');
+                const blob = new Blob([courseCodes], { type: 'text/plain;charset=utf-8' });
+                
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = '履修科目コード.txt';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href); 
+                showModal('履修科目コードをエクスポートしました。');
+            } catch (error) {
+                console.error("エクスポートエラー:", error);
+                showModal(`エクスポートに失敗しました: ${error.message}`);
+            }
+        });
+
+        importDataButton.addEventListener('click', () => {
+            const codesText = importDataInput.value.trim();
+            if (!codesText) {
+                showModal('インポートする科目コードを入力してください。');
+                return;
+            }
+            if (allFetchedCourses.length === 0) {
+                showModal('全講義データがまだ読み込まれていません。しばらく待ってから再試行してください。');
+                return;
+            }
+
+            try {
+                const importedCodes = codesText.split('\n').map(code => code.trim()).filter(code => code !== '');
+                let newlySelectedCourses = [];
+                let notFoundCodes = []; 
+
+                importedCodes.forEach(code => {
+                    const courseToAdd = allFetchedCourses.find(c => c.code === code);
+                    if (courseToAdd) {
+                        if (!newlySelectedCourses.some(sc => sc.id === courseToAdd.id)) { 
+                            newlySelectedCourses.push(courseToAdd);
+                        }
+                    } else {
+                        notFoundCodes.push(code);
+                    }
+                });
+                
+                selectedCourses = newlySelectedCourses; 
+
+                saveSelectedCourses();
+                renderSelectedCourses();
+                renderGraduationStatus();
+                const searchTerm = searchInput.value.toLowerCase();
+                renderAllCourses(allFetchedCourses.filter(c => 
+                    c.name.toLowerCase().includes(searchTerm) || c.code.toLowerCase().includes(searchTerm)
+                ));
+                importDataInput.value = '';
+
+                let message = `${selectedCourses.length}件の講義をインポートしました。`;
+                if (notFoundCodes.length > 0) {
+                    message += `\n以下の科目コードは見つかりませんでした: ${notFoundCodes.join(', ')}`;
+                }
+                showModal(message);
+
+            } catch (error) {
+                console.error('インポートエラー:', error);
+                showModal(`データのインポートに失敗しました: ${error.message}`);
+            }
+        });
+
+
+        // --- Graduation Requirements Logic ---
+        const basicInfoCodes = ["BSC-1-B1-1030-001", "BSC-1-B1-0204-002", "BSC-1-B1-0204-003"];
+        const basicMathCodes = ["BSC-1-B1-0204-004", "BSC-1-B1-1030-005", "BSC-1-B1-0204-006"];
+        const basicCultureThoughtCodes = ["BSC-1-B1-1030-007", "BSC-1-B1-1030-008", "BSC-1-B1-0204-009"];
+        const basicSocietyNetworkCodes = ["BSC-1-B1-1030-010", "BSC-1-B1-0204-011", "BSC-1-B1-1030-012"];
+        const basicEconomyMarketCodes = ["BSC-1-B1-0204-013", "BSC-1-B1-0204-014", "BSC-1-B1-0204-015"];
+
+        const isIntroductory = (course) => !course.code.startsWith('OPT') && course.code.startsWith('INT-');
+        
+        const isBasicMathematical = (course) => !course.code.startsWith('OPT') && basicMathCodes.includes(course.code);
+        const isBasicInformation = (course) => !course.code.startsWith('OPT') && basicInfoCodes.includes(course.code);
+        const isBasicCultureThought = (course) => !course.code.startsWith('OPT') && basicCultureThoughtCodes.includes(course.code);
+        const isBasicSocietyNetwork = (course) => !course.code.startsWith('OPT') && basicSocietyNetworkCodes.includes(course.code);
+        const isBasicEconomyMarket = (course) => !course.code.startsWith('OPT') && basicEconomyMarketCodes.includes(course.code);
+        const isBasicMultilingualITComm = (course) => !course.code.startsWith('OPT') && course.code === 'BSC-1-A2-1234-016'; 
+
+        const isBasicSubject = (course) => 
+            !course.code.startsWith('OPT') &&
+            (isBasicMathematical(course) || isBasicInformation(course) || 
+            isBasicCultureThought(course) || isBasicSocietyNetwork(course) ||
+            isBasicEconomyMarket(course) || isBasicMultilingualITComm(course));
+
+        const isProjectPractice = (course) => !course.code.startsWith('OPT') && (course.name.includes("プロジェクト実践") || course.code.startsWith('PJT-')); 
+
+        const isDevelopmentSubject = (course) => {
+            if (course.code.startsWith('OPT')) return false;
+            if (isIntroductory(course) || isBasicSubject(course) || isProjectPractice(course)) {
+                return false;
+            }
+            return true; 
+        };
+        
+        const isDevDigitalIndustry = (course) => 
+            !course.code.startsWith('OPT') &&
+            isDevelopmentSubject(course) && 
+            (course.rawCourseData?.subjectCategoryIds?.includes('digital_industry') || course.code.startsWith('DIGI-')) && 
+            ["IT産業史", "マンガ産業史", "アニメ産業史", "日本のゲーム産業史"].some(namePart => course.name.includes(namePart));
+        
+        const isDevSocialConnection = (course) => !course.code.startsWith('OPT') && isDevelopmentSubject(course) && (course.rawCourseData?.subjectCategoryIds?.includes('social_connection') || course.code.startsWith('CAR-') || course.name.includes("社会接続"));
+
+
+        function checkGraduationRequirements() {
+            let introCredits = 0;
+            let basicMathCredits = 0, basicInfoCredits = 0, basicCultureCredits = 0, 
+                basicSocietyCredits = 0, basicEconomyCredits = 0, basicMultiITCredits = 0;
+            
+            let devTotalCredits = 0; 
+            let devRawTotalCredits = 0; 
+
+            let devCombinedBasicLiteracyCredits = 0;
+            let devCombinedMultiInfoCompCredits = 0;
+            let devCombinedWorldUnderstandingCredits = 0;
+            
+            let devDigitalIndustryCredits = 0; 
+            let devSocialConnectionCredits = 0; 
+            
+            let projectPracticeCredits = 0;
+            let totalEarnedCreditsForGraduation = 0; 
+
+            let coursesInIntro = [];
+            let coursesInBasicMath = [], coursesInBasicInfo = [], coursesInBasicCulture = [],
+                coursesInBasicSociety = [], coursesInBasicEconomy = [], coursesInBasicMultiIT = [];
+            
+            let coursesInDevCombinedBasicLiteracy = new Set(); 
+            let coursesInDevCombinedMultiInfoComp = new Set();
+            let coursesInDevCombinedWorldUnderstanding = new Set();
+            let coursesInDevDigitalIndustry = [];   
+            let coursesInDevSocialConnection = [];
+            let coursesInProjectPractice = [];
+            let gradReqRelevantSelectedCourses = []; 
+
+            selectedCourses.forEach(course => {
+                if (course.code.startsWith('OPT')) {
+                    return; 
+                }
+                gradReqRelevantSelectedCourses.push(course);
+                totalEarnedCreditsForGraduation += course.credits; 
+
+                if (isIntroductory(course)) {
+                    introCredits += course.credits;
+                    coursesInIntro.push(course);
+                } else if (isBasicMathematical(course)) {
+                    basicMathCredits += course.credits;
+                    coursesInBasicMath.push(course);
+                } else if (isBasicInformation(course)) {
+                    basicInfoCredits += course.credits;
+                    coursesInBasicInfo.push(course);
+                } else if (isBasicCultureThought(course)) {
+                    basicCultureCredits += course.credits;
+                    coursesInBasicCulture.push(course);
+                } else if (isBasicSocietyNetwork(course)) {
+                    basicSocietyCredits += course.credits;
+                    coursesInBasicSociety.push(course);
+                } else if (isBasicEconomyMarket(course)) {
+                    basicEconomyCredits += course.credits;
+                    coursesInBasicEconomy.push(course);
+                } else if (isBasicMultilingualITComm(course)) {
+                    basicMultiITCredits += course.credits;
+                    coursesInBasicMultiIT.push(course);
+                } else if (isProjectPractice(course)) {
+                    projectPracticeCredits += course.credits;
+                    coursesInProjectPractice.push(course);
+                } else if (isDevelopmentSubject(course)) {
+                    devRawTotalCredits += course.credits;
+                    if (isDevSocialConnection(course)) { 
+                        devSocialConnectionCredits += course.credits;
+                        coursesInDevSocialConnection.push(course);
+                    }
+                    // Add to specific combined development categories based on prefixes
+                    if (course.code.startsWith('INF-') || course.code.startsWith('MTH-')) {
+                        coursesInDevCombinedBasicLiteracy.add(course);
+                    }
+                    if (course.code.startsWith('LAN-')) { 
+                        coursesInDevCombinedMultiInfoComp.add(course);
+                    }
+                    if (course.code.startsWith('HUM-') || course.code.startsWith('SOC-') || course.code.startsWith('ECON-')) {
+                        coursesInDevCombinedWorldUnderstanding.add(course);
+                    }
+                    // Add to Digital Industry if it matches (subset of World Understanding)
+                    if (isDevDigitalIndustry(course)) { 
+                        devDigitalIndustryCredits += course.credits;
+                        coursesInDevDigitalIndustry.push(course);
+                        // Ensure it's also in the World Understanding Set if not already by prefix
+                        coursesInDevCombinedWorldUnderstanding.add(course); 
+                    }
+                }
+            });
+            
+            // Calculate combined credits from the Sets
+            let tempDevCombinedBasicLiteracyCredits = 0;
+            coursesInDevCombinedBasicLiteracy.forEach(c => tempDevCombinedBasicLiteracyCredits += c.credits);
+            devCombinedBasicLiteracyCredits = tempDevCombinedBasicLiteracyCredits + basicMathCredits + basicInfoCredits;
+            // For display, merge basic courses into the set for combined literacy
+            coursesInBasicMath.forEach(c => coursesInDevCombinedBasicLiteracy.add(c));
+            coursesInBasicInfo.forEach(c => coursesInDevCombinedBasicLiteracy.add(c));
+
+
+            let tempDevCombinedMultiInfoCompCredits = 0;
+            coursesInDevCombinedMultiInfoComp.forEach(c => tempDevCombinedMultiInfoCompCredits += c.credits);
+            devCombinedMultiInfoCompCredits = tempDevCombinedMultiInfoCompCredits + basicMultiITCredits;
+            coursesInBasicMultiIT.forEach(c => coursesInDevCombinedMultiInfoComp.add(c));
+            
+            let tempDevCombinedWorldUnderstandingCredits = 0;
+            coursesInDevCombinedWorldUnderstanding.forEach(c => tempDevCombinedWorldUnderstandingCredits += c.credits);
+            devCombinedWorldUnderstandingCredits = tempDevCombinedWorldUnderstandingCredits + basicCultureCredits + basicSocietyCredits + basicEconomyCredits;
+            coursesInBasicCulture.forEach(c => coursesInDevCombinedWorldUnderstanding.add(c));
+            coursesInBasicSociety.forEach(c => coursesInDevCombinedWorldUnderstanding.add(c));
+            coursesInBasicEconomy.forEach(c => coursesInDevCombinedWorldUnderstanding.add(c));
+
+
+            const basicTotalCredits = basicMathCredits + basicInfoCredits + basicCultureCredits + 
+                                    basicSocietyCredits + basicEconomyCredits + basicMultiITCredits;
+            
+            if (devSocialConnectionCredits > 10) {
+                devTotalCredits = devRawTotalCredits - (devSocialConnectionCredits - 10);
+            } else {
+                devTotalCredits = devRawTotalCredits;
+            }
+
+            if (devSocialConnectionCredits > 10) { 
+                totalEarnedCreditsForGraduation -= (devSocialConnectionCredits - 10);
+            }
+
+
+            const status = {
+                total: { req: 124, achieved: totalEarnedCreditsForGraduation, met: totalEarnedCreditsForGraduation >= 124, courses: gradReqRelevantSelectedCourses, details: `総取得単位 (OPT除く): ${totalEarnedCreditsForGraduation} / 124単位` },
+                introductory: { name: "導入科目", req: 14, achieved: introCredits, met: introCredits >= 14, courses: coursesInIntro, details: `取得: ${introCredits} / 14単位` },
+                basic: {
+                    name: "基礎科目",
+                    req: 12,
+                    achieved: basicTotalCredits,
+                    met: basicTotalCredits >= 12,
+                    courses: [].concat(coursesInBasicMath, coursesInBasicInfo, coursesInBasicCulture, coursesInBasicSociety, coursesInBasicEconomy, coursesInBasicMultiIT),
+                    details: `合計取得: ${basicTotalCredits} / 12単位`,
+                    subCategories: [
+                        { name: "数理", req: 2, achieved: basicMathCredits, met: basicMathCredits >= 2, courses: coursesInBasicMath },
+                        { name: "情報", req: 2, achieved: basicInfoCredits, met: basicInfoCredits >= 2, courses: coursesInBasicInfo },
+                        { name: "文化・思想", req: 2, achieved: basicCultureCredits, met: basicCultureCredits >= 2, courses: coursesInBasicCulture },
+                        { name: "社会・ネットワーク", req: 2, achieved: basicSocietyCredits, met: basicSocietyCredits >= 2, courses: coursesInBasicSociety },
+                        { name: "経済・マーケット", req: 2, achieved: basicEconomyCredits, met: basicEconomyCredits >= 2, courses: coursesInBasicEconomy },
+                        { name: "多言語ITコミュニケーション", req: 2, achieved: basicMultiITCredits, met: basicMultiITCredits >= 2, courses: coursesInBasicMultiIT }
+                    ],
+                    allSubMet: false 
+                },
+                development: {
+                    name: "展開科目",
+                    req: 74,
+                    achieved: devTotalCredits, 
+                    met: devTotalCredits >= 74,
+                    courses: selectedCourses.filter(c => isDevelopmentSubject(c) && !c.code.startsWith('OPT')), 
+                    details: `合計取得: ${devTotalCredits} / 74単位 (社会接続科目は最大10単位まで算入)`,
+                    subChecks: [
+                        { 
+                            name: "基盤リテラシー科目（基礎科目と合わせて）", 
+                            req: 8, 
+                            achieved: devCombinedBasicLiteracyCredits, 
+                            met: devCombinedBasicLiteracyCredits >= 8,
+                            courses: Array.from(coursesInDevCombinedBasicLiteracy), 
+                            details: `基礎(数理,情報) + 展開(INF-,MTH-など): ${devCombinedBasicLiteracyCredits} / 8単位`
+                        },
+                        { 
+                            name: "多言語情報理解科目（基礎科目と合わせて）", 
+                            req: 8, 
+                            achieved: devCombinedMultiInfoCompCredits, 
+                            met: devCombinedMultiInfoCompCredits >= 8,
+                            courses: Array.from(coursesInDevCombinedMultiInfoComp),
+                            details: `基礎(多言語IT) + 展開(LAN-など): ${devCombinedMultiInfoCompCredits} / 8単位`
+                        },
+                        {
+                            name: "世界理解科目（基礎科目と合わせて）",
+                            req: 26,
+                            achieved: devCombinedWorldUnderstandingCredits,
+                            met: devCombinedWorldUnderstandingCredits >= 26,
+                            courses: Array.from(coursesInDevCombinedWorldUnderstanding), 
+                            details: `基礎(文化思想,社会NW,経済M) + 展開(HUM-,SOC-,ECON-など): ${devCombinedWorldUnderstandingCredits} / 26単位`,
+                            subSubChecks: [ 
+                                { name: "デジタル産業（世界理解科目内）", req: 2, achieved: devDigitalIndustryCredits, met: devDigitalIndustryCredits >= 2, courses: coursesInDevDigitalIndustry }
+                            ],
+                            allSubSubMet: false 
+                        },
+                        { 
+                            name: "社会接続科目", 
+                            max: 10, 
+                            achievedOriginal: devSocialConnectionCredits, 
+                            achievedCounted: Math.min(devSocialConnectionCredits, 10), 
+                            met: true, 
+                            courses: coursesInDevSocialConnection,
+                            details: `取得: ${devSocialConnectionCredits}単位 (卒業要件へは最大10単位まで算入)`
+                        }
+                    ],
+                    allSubChecksMet: false 
+                },
+                projectPractice: { name: "プロジェクト実践", req: 4, achieved: projectPracticeCredits, met: projectPracticeCredits >= 4, courses: coursesInProjectPractice, details: `取得: ${projectPracticeCredits} / 4単位` },
+                overallMet: false
+            };
+
+            status.basic.allSubMet = status.basic.subCategories.every(sc => sc.met) && status.basic.met;
+            
+            const worldUnderstandingCheck = status.development.subChecks.find(sc => sc.name.startsWith("世界理解科目"));
+            if (worldUnderstandingCheck) {
+                worldUnderstandingCheck.allSubSubMet = worldUnderstandingCheck.subSubChecks.every(ssc => ssc.met) && worldUnderstandingCheck.met;
+            }
+
+            status.development.allSubChecksMet = 
+                status.development.subChecks.find(sc => sc.name.startsWith("基盤リテラシー科目")).met &&
+                status.development.subChecks.find(sc => sc.name.startsWith("多言語情報理解科目")).met &&
+                (worldUnderstandingCheck ? worldUnderstandingCheck.allSubSubMet : false) && 
+                status.development.met; 
+
+            status.overallMet = status.total.met &&
+                                status.introductory.met &&
+                                status.basic.allSubMet &&
+                                status.development.allSubChecksMet && 
+                                status.projectPractice.met;
+            
+            return status;
+        }
+
+        function renderGraduationStatus() {
+            const status = checkGraduationRequirements();
+            graduationStatusContainer.innerHTML = ''; 
+
+            function createStatusElement(label, item, indentLevel = 0, isSubItem = false) {
+                const div = document.createElement('div');
+                div.className = `p-3 rounded-md border ${item.met ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'} ${isSubItem ? 'ml-4' : ''}`;
+                
+                let achievedText = item.achieved;
+                if (label === "社会接続科目" && item.achievedOriginal !== undefined) {
+                     achievedText = `${item.achievedOriginal} (算入: ${item.achievedCounted})`;
+                }
+
+                const progressBarId = `progress-${label.replace(/\s+/g, '-').replace(/[()]/g, '')}`; 
+                const progressPercent = item.req ? Math.min((item.achieved / item.req) * 100, 100) : (item.met ? 100 : 0);
+                 
+                div.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-medium text-gray-700 ${indentLevel > 0 ? `pl-${indentLevel * 4}` : ''}">${label}</span>
+                        <span class="${item.met ? 'text-green-600' : 'text-red-600'} font-semibold">
+                            ${item.met ? '✓ 達成' : '✗ 未達成'}
+                        </span>
+                    </div>
+                    ${ (item.req || item.max) ? `
+                    <p class="text-sm text-gray-600 mt-1 ${indentLevel > 0 ? `pl-${indentLevel * 4}` : ''}">
+                        ${item.details || (item.max ? `取得: ${achievedText} / 上限${item.max}単位` : `取得: ${achievedText} / ${item.req}単位`)}
+                    </p>
+                    ${ (item.req && label !== "社会接続科目") ? `
+                    <div class="mt-2 progress-bar-bg h-4 w-full">
+                        <div id="${progressBarId}" class="progress-bar h-full text-xs leading-none py-1 text-center text-white" style="width: ${progressPercent}%;">
+                           ${Math.round(progressPercent)}%
+                        </div>
+                    </div>` : ''}
+                    ` : ''}
+                    ${item.courses && item.courses.length > 0 ? `
+                        <div class="mt-2 text-xs text-gray-500 ${indentLevel > 0 ? `pl-${indentLevel * 4}` : ''}">
+                            <strong>該当講義:</strong>
+                            <ul class="list-disc list-inside ml-2">
+                                ${item.courses.map(c => `<li>${c.name} (${c.credits}単位)</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : (item.req && !item.met ? `<p class="text-xs text-gray-500 mt-1 ${indentLevel > 0 ? `pl-${indentLevel * 4}` : ''}">該当講義なし</p>` : '')}
+                `;
+                return div;
+            }
+            
+            const overallDiv = document.createElement('div');
+            overallDiv.className = `p-4 rounded-lg border-2 mb-6 ${status.overallMet ? 'border-green-500 bg-green-100' : 'border-red-500 bg-red-100'}`;
+            overallDiv.innerHTML = `
+                <h3 class="text-xl font-bold ${status.overallMet ? 'text-green-700' : 'text-red-700'}">
+                    卒業要件 ${status.overallMet ? '達成済み 🎉' : '未達成'}
+                </h3>
+                <p class="text-sm ${status.overallMet ? 'text-green-600' : 'text-red-600'}">
+                    ${status.overallMet ? 'おめでとうございます！全ての主要な卒業要件を満たしています。' : 'まだ満たされていない要件があります。詳細は以下を確認してください。'}
+                </p>`;
+            graduationStatusContainer.appendChild(overallDiv);
+
+            graduationStatusContainer.appendChild(createStatusElement("総取得単位 (OPT除く)", status.total));
+            graduationStatusContainer.appendChild(createStatusElement(status.introductory.name, status.introductory));
+            
+            const basicDiv = createStatusElement(status.basic.name, { ...status.basic, met: status.basic.allSubMet });
+            status.basic.subCategories.forEach(sub => {
+                basicDiv.appendChild(createStatusElement(sub.name, sub, 1, true));
+            });
+            graduationStatusContainer.appendChild(basicDiv);
+
+            const devDiv = createStatusElement(status.development.name, { ...status.development, met: status.development.allSubChecksMet });
+            status.development.subChecks.forEach(subCheck => {
+                const subCheckDiv = createStatusElement(subCheck.name, subCheck, 1, true);
+                 if (subCheck.subSubChecks) { 
+                    subCheck.subSubChecks.forEach(subSubCheck => {
+                        subCheckDiv.appendChild(createStatusElement(subSubCheck.name, {...subSubCheck, parentMet: subCheck.met}, 2, true));
+                    });
+                }
+                devDiv.appendChild(subCheckDiv);
+            });
+            graduationStatusContainer.appendChild(devDiv);
+            
+            graduationStatusContainer.appendChild(createStatusElement(status.projectPractice.name, status.projectPractice));
+        }
+
+        // --- Initialization ---
+        async function init() {
+            await fetchLectures(); 
+            loadSelectedCourses(); 
+            renderSelectedCourses();
+            renderGraduationStatus();
+            document.querySelector('.tab-button[data-tab="courseSelectionTab"]').click();
+        }
+
+        init();
+    </script>
+</body>
+</html>
