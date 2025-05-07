@@ -1,4 +1,4 @@
-# 学習管理ページ (Syllabus & Graduation Tracker)
+# 学習管理ページ (StudyZenith)
 
 ## 概要
 
