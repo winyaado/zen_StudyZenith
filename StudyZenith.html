@@ -104,11 +104,11 @@
         }
         .modal-content {
             background-color: #fefefe;
-            margin: 15% auto; /* 15% from the top and centered */
+            margin: 10% auto; /* 10% from the top and centered */
             padding: 20px;
             border: 1px solid #888;
             width: 80%; /* Could be more or less, depending on screen size */
-            max-width: 500px;
+            max-width: 600px; /* Increased max-width for better readability of messages */
             border-radius: 0.5rem;
         }
         .close-button {
@@ -150,11 +150,12 @@
         </header>
 
         <div class="mb-6 border-b border-gray-300">
-            <nav class="flex" aria-label="Tabs">
+            <nav class="flex flex-wrap" aria-label="Tabs">
                 <button class="tab-button active" data-tab="courseSelectionTab">講義選択</button>
                 <button class="tab-button" data-tab="myCoursesTab">履修中講義</button>
                 <button class="tab-button" data-tab="graduationCheckTab">卒業要件チェック</button>
                 <button class="tab-button" data-tab="dataManagementTab">データ管理</button>
+                <button class="tab-button" data-tab="gradReqManagementTab">卒業要件管理</button>
             </nav>
         </div>
 
@@ -213,12 +214,50 @@
                 </div>
             </div>
         </div>
+
+        <div id="gradReqManagementTab" class="tab-content hidden">
+            <div class="card">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-700">卒業要件データ管理</h2>
+                <div class="space-y-6">
+                    <div>
+                        <button id="exportRequirementsButton"
+                            class="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition duration-150 ease-in-out">
+                            現在の卒業要件をエクスポート (JSON)
+                        </button>
+                        <p class="text-xs text-gray-500 mt-1">現在適用されている卒業要件をJSONファイルでエクスポートします。</p>
+                    </div>
+                    <div>
+                        <label for="importRequirementsInputFile" class="block text-sm font-medium text-gray-700 mb-1">卒業要件をインポート (JSON):</label>
+                        <input type="file" id="importRequirementsInputFile" accept=".json"
+                            class="w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                        <button id="importRequirementsButton"
+                            class="mt-3 w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition duration-150 ease-in-out">
+                            インポート実行
+                        </button>
+                         <p class="text-xs text-gray-500 mt-1">JSON形式の卒業要件ファイルをアップロードして適用します。</p>
+                    </div>
+                    <div class="mt-6">
+                        <h3 class="text-lg font-medium text-gray-700 mb-2">現在適用中の卒業要件 (JSON)</h3>
+                        <textarea id="currentRequirementsTextarea" rows="15" readonly
+                            class="w-full p-3 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-xs font-mono"
+                            placeholder="ここに現在適用中の卒業要件がJSON形式で表示されます..."></textarea>
+                    </div>
+                     <div>
+                        <button id="resetRequirementsButton"
+                            class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition duration-150 ease-in-out">
+                            卒業要件をデフォルトにリセット
+                        </button>
+                        <p class="text-xs text-gray-500 mt-1">卒業要件を初期状態に戻します。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="messageModal" class="modal">
         <div class="modal-content">
             <span class="close-button" id="closeModalButton">&times;</span>
-            <p id="modalMessageText" class="text-gray-700"></p>
+            <p id="modalMessageText" class="text-gray-700 whitespace-pre-wrap"></p>
         </div>
     </div>
 
@@ -235,6 +274,13 @@
         const importDataButton = document.getElementById('importDataButton');
         const loadingMessage = document.getElementById('loadingMessage');
 
+        // New DOM Elements for Graduation Requirements Management
+        const exportRequirementsButton = document.getElementById('exportRequirementsButton');
+        const importRequirementsInputFile = document.getElementById('importRequirementsInputFile');
+        const importRequirementsButton = document.getElementById('importRequirementsButton');
+        const currentRequirementsTextarea = document.getElementById('currentRequirementsTextarea');
+        const resetRequirementsButton = document.getElementById('resetRequirementsButton');
+
         const messageModal = document.getElementById('messageModal');
         const modalMessageText = document.getElementById('modalMessageText');
         const closeModalButton = document.getElementById('closeModalButton');
@@ -242,6 +288,104 @@
         // State
         let allFetchedCourses = [];
         let selectedCourses = [];
+        let graduationRequirementsConfig = {}; // Will hold the loaded graduation requirements
+
+        // --- Default Graduation Requirements Configuration ---
+        const DEFAULT_GRADUATION_REQUIREMENTS = {
+            version: "1.0.1",
+            description: "Default Graduation Requirements (Example based on initial hardcoded logic)",
+            exclusionPrefixes: ["OPT"], // Courses starting with these prefixes are excluded from graduation checks
+            totalCreditsRequired: 124,
+            categories: [
+                {
+                    id: "introductory",
+                    name: "導入科目",
+                    creditsRequired: 14,
+                    identification: { startsWith: ["INT-"] }
+                },
+                {
+                    id: "basic",
+                    name: "基礎科目",
+                    creditsRequired: 12,
+                    allSubCategoriesMustBeMet: true,
+                    subCategories: [
+                        { id: "basicMath", name: "数理", creditsRequired: 2, identification: { courseCodes: ["BSC-1-B1-0204-004", "BSC-1-B1-1030-005", "BSC-1-B1-0204-006"] }},
+                        { id: "basicInfo", name: "情報", creditsRequired: 2, identification: { courseCodes: ["BSC-1-B1-1030-001", "BSC-1-B1-0204-002", "BSC-1-B1-0204-003"] }},
+                        { id: "basicCultureThought", name: "文化・思想", creditsRequired: 2, identification: { courseCodes: ["BSC-1-B1-1030-007", "BSC-1-B1-1030-008", "BSC-1-B1-0204-009"] }},
+                        { id: "basicSocietyNetwork", name: "社会・ネットワーク", creditsRequired: 2, identification: { courseCodes: ["BSC-1-B1-1030-010", "BSC-1-B1-0204-011", "BSC-1-B1-1030-012"] }}, // Corrected 0011 to 011
+                        { id: "basicEconomyMarket", name: "経済・マーケット", creditsRequired: 2, identification: { courseCodes: ["BSC-1-B1-0204-013", "BSC-1-B1-0204-014", "BSC-1-B1-0204-015"] }},
+                        { id: "basicMultilingualITComm", name: "多言語ITコミュニケーション", creditsRequired: 2, identification: { courseCodes: ["BSC-1-A2-1234-016"] }}
+                    ]
+                },
+                {
+                    id: "development",
+                    name: "展開科目",
+                    creditsRequired: 74,
+                    notes: "社会接続科目は最大10単位まで算入",
+                    // General development subjects are those not classified as intro, basic, or projectPractice
+                    // and not excluded by `exclusionPrefixes`.
+                    isGeneralDevelopmentCategory: true, // Special flag to identify this as the main 'development' bucket
+                    subChecks: [
+                        {
+                            id: "devCombinedBasicLiteracy",
+                            name: "基盤リテラシー科目（基礎科目と合わせて）",
+                            creditsRequired: 8,
+                            description: "基礎(数理,情報) + 展開(INF-,MTH-など)",
+                            identification: { startsWith: ["INF-", "MTH-"] }, // Development courses contributing
+                            includeBasicCategoryIds: ["basicMath", "basicInfo"] // Basic categories to sum with
+                        },
+                        {
+                            id: "devCombinedMultiInfoComp",
+                            name: "多言語情報理解科目（基礎科目と合わせて）",
+                            creditsRequired: 8,
+                            description: "基礎(多言語IT) + 展開(LAN-など)",
+                            identification: { startsWith: ["LAN-"] },
+                            includeBasicCategoryIds: ["basicMultilingualITComm"]
+                        },
+                        {
+                            id: "devCombinedWorldUnderstanding",
+                            name: "世界理解科目（基礎科目と合わせて）",
+                            creditsRequired: 26,
+                            description: "基礎(文化思想,社会NW,経済M) + 展開(HUM-,SOC-,ECON-など)",
+                            identification: { startsWith: ["HUM-", "SOC-", "ECON-", "DIGI-"] }, // DIGI- added as an example
+                            includeBasicCategoryIds: ["basicCultureThought", "basicSocietyNetwork", "basicEconomyMarket"],
+                            subSubChecks: [
+                                {
+                                    id: "devDigitalIndustry",
+                                    name: "デジタル産業（世界理解科目内）",
+                                    creditsRequired: 2,
+                                    identification: {
+                                        subjectCategoryIdsFromRaw: ["digital_industry"], // Check course.rawCourseData.subjectCategoryIds
+                                        nameIncludes: ["IT産業史", "マンガ産業史", "アニメ産業史", "日本のゲーム産業史"],
+                                        startsWith: ["DIGI-"] // Example if specific codes exist
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            id: "devSocialConnection",
+                            name: "社会接続科目",
+                            creditsMax: 10,
+                            identification: {
+                                subjectCategoryIdsFromRaw: ["social_connection"],
+                                nameIncludes: ["社会接続"],
+                                startsWith: ["CAR-"]
+                            }
+                        }
+                    ]
+                },
+                {
+                    id: "projectPractice",
+                    name: "プロジェクト実践",
+                    creditsRequired: 4,
+                    identification: {
+                        startsWith: ["PJT-"],
+                        nameIncludes: ["プロジェクト実践"]
+                    }
+                }
+            ]
+        };
+
 
         // --- Utility Functions ---
         function parseCredits(creditString) {
@@ -281,6 +425,7 @@
                 });
                 if (targetTab === 'myCoursesTab') renderSelectedCourses();
                 if (targetTab === 'graduationCheckTab') renderGraduationStatus();
+                if (targetTab === 'gradReqManagementTab') displayCurrentRequirementsInTextarea();
             });
         });
 
@@ -289,7 +434,7 @@
             const baseUrl = 'https://api.syllabus.zen.ac.jp/search';
             let currentPage = 0;
             let totalPages = 1; 
-            let accumulatedCoursesRaw = []; // Store raw subject objects from API to check for duplicates by code
+            let accumulatedCoursesRaw = [];
 
             loadingMessage.textContent = '講義データを読み込み中 (0%)...';
             loadingMessage.classList.remove('hidden');
@@ -307,7 +452,6 @@
                     }
 
                     if (data.subjects && Array.isArray(data.subjects)) {
-                        // Add subjects only if they are not already in accumulatedCoursesRaw (based on code)
                         data.subjects.forEach(subject => {
                             if (!accumulatedCoursesRaw.some(existingCourse => existingCourse.code === subject.code)) {
                                 accumulatedCoursesRaw.push(subject);
@@ -320,7 +464,6 @@
                     loadingMessage.textContent = `講義データを読み込み中 (${progressPercent}%)... 全 ${totalPages} ページ中 ${currentPage} ページ完了`;
                 }
 
-                // Now map the unique raw courses to the format used by the application
                 allFetchedCourses = accumulatedCoursesRaw.map(course => ({
                     id: course.code, 
                     code: course.code,
@@ -334,6 +477,12 @@
                 loadingMessage.classList.add('hidden');
                 renderAllCourses(allFetchedCourses); 
                 console.log(`全 ${allFetchedCourses.length} 件のユニークな講義データを取得しました。`);
+                // After fetching all courses, try to load selected courses again,
+                // as they depend on allFetchedCourses being populated.
+                loadSelectedCourses();
+                renderSelectedCourses();
+                renderGraduationStatus();
+
 
             } catch (error) {
                 console.error('講義データの取得に失敗しました:', error);
@@ -346,7 +495,7 @@
         function renderAllCourses(coursesToRender) {
             allCoursesContainer.innerHTML = ''; 
             if (coursesToRender.length === 0 && !loadingMessage.classList.contains('hidden')) {
-                 allCoursesContainer.innerHTML = '<p class="text-gray-500 col-span-full text-center">該当する講義が見つかりません。</p>';
+                 allCoursesContainer.innerHTML = '<p class="text-gray-500 col-span-full text-center">講義データを読み込み中です...</p>'; // Changed message
                  return;
             }
              if (coursesToRender.length === 0 && loadingMessage.classList.contains('hidden')) {
@@ -387,7 +536,6 @@
                         e.target.disabled = true;
                         e.target.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
                         e.target.classList.add('bg-gray-400', 'text-gray-700', 'cursor-not-allowed');
-                        console.log(`「${courseToAdd.name}」を履修リストに追加しました。`);
                     }
                 });
             });
@@ -419,16 +567,18 @@
             document.querySelectorAll('.remove-course-btn').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const courseIdToRemove = e.target.getAttribute('data-course-id');
-                    const courseName = selectedCourses.find(c => c.id === courseIdToRemove)?.name || "選択された講義";
                     selectedCourses = selectedCourses.filter(c => c.id !== courseIdToRemove);
                     saveSelectedCourses();
                     renderSelectedCourses(); 
                     renderGraduationStatus(); 
-                    renderAllCourses(allFetchedCourses.filter(c => { 
-                        const searchTerm = searchInput.value.toLowerCase();
-                        return c.name.toLowerCase().includes(searchTerm) || c.code.toLowerCase().includes(searchTerm);
-                    }));
-                    console.log(`「${courseName}」を履修リストから削除しました。`);
+                    // Re-render all courses to update "Add" buttons
+                     const searchTerm = searchInput.value.toLowerCase();
+                    const filtered = allFetchedCourses.filter(c => 
+                        c.name.toLowerCase().includes(searchTerm) || 
+                        c.code.toLowerCase().includes(searchTerm) ||
+                        (c.description && c.description.toLowerCase().includes(searchTerm))
+                    );
+                    renderAllCourses(filtered);
                 });
             });
         }
@@ -454,6 +604,7 @@
                 const codes = JSON.parse(storedCourseCodes);
                 selectedCourses = codes.map(code => allFetchedCourses.find(course => course.code === code)).filter(course => course !== undefined);
             } else if (storedCourseCodes && allFetchedCourses.length === 0) {
+                // This case is handled by calling loadSelectedCourses again after fetchLectures completes.
                 console.warn("Stored codes found, but all courses not yet fetched. Will attempt to load after fetch.");
             }
         }
@@ -532,307 +683,467 @@
             }
         });
 
-
-        // --- Graduation Requirements Logic ---
-        const basicInfoCodes = ["BSC-1-B1-1030-001", "BSC-1-B1-0204-002", "BSC-1-B1-0204-003"];
-        const basicMathCodes = ["BSC-1-B1-0204-004", "BSC-1-B1-1030-005", "BSC-1-B1-0204-006"];
-        const basicCultureThoughtCodes = ["BSC-1-B1-1030-007", "BSC-1-B1-1030-008", "BSC-1-B1-0204-009"];
-        const basicSocietyNetworkCodes = ["BSC-1-B1-1030-010", "BSC-1-B1-0204-011", "BSC-1-B1-1030-012"];
-        const basicEconomyMarketCodes = ["BSC-1-B1-0204-013", "BSC-1-B1-0204-014", "BSC-1-B1-0204-015"];
-
-        const isIntroductory = (course) => !course.code.startsWith('OPT') && course.code.startsWith('INT-');
-        
-        const isBasicMathematical = (course) => !course.code.startsWith('OPT') && basicMathCodes.includes(course.code);
-        const isBasicInformation = (course) => !course.code.startsWith('OPT') && basicInfoCodes.includes(course.code);
-        const isBasicCultureThought = (course) => !course.code.startsWith('OPT') && basicCultureThoughtCodes.includes(course.code);
-        const isBasicSocietyNetwork = (course) => !course.code.startsWith('OPT') && basicSocietyNetworkCodes.includes(course.code);
-        const isBasicEconomyMarket = (course) => !course.code.startsWith('OPT') && basicEconomyMarketCodes.includes(course.code);
-        const isBasicMultilingualITComm = (course) => !course.code.startsWith('OPT') && course.code === 'BSC-1-A2-1234-016'; 
-
-        const isBasicSubject = (course) => 
-            !course.code.startsWith('OPT') &&
-            (isBasicMathematical(course) || isBasicInformation(course) || 
-            isBasicCultureThought(course) || isBasicSocietyNetwork(course) ||
-            isBasicEconomyMarket(course) || isBasicMultilingualITComm(course));
-
-        const isProjectPractice = (course) => !course.code.startsWith('OPT') && (course.name.includes("プロジェクト実践") || course.code.startsWith('PJT-')); 
-
-        const isDevelopmentSubject = (course) => {
-            if (course.code.startsWith('OPT')) return false;
-            if (isIntroductory(course) || isBasicSubject(course) || isProjectPractice(course)) {
-                return false;
+        // --- Graduation Requirements Management ---
+        function loadGraduationRequirements() {
+            const storedReqs = localStorage.getItem('graduationRequirementsConfig');
+            if (storedReqs) {
+                try {
+                    graduationRequirementsConfig = JSON.parse(storedReqs);
+                    console.log("Loaded graduation requirements from localStorage.");
+                } catch (e) {
+                    console.error("Failed to parse stored graduation requirements, using default.", e);
+                    graduationRequirementsConfig = JSON.parse(JSON.stringify(DEFAULT_GRADUATION_REQUIREMENTS)); // Deep copy
+                }
+            } else {
+                graduationRequirementsConfig = JSON.parse(JSON.stringify(DEFAULT_GRADUATION_REQUIREMENTS)); // Deep copy
+                console.log("Using default graduation requirements.");
             }
-            return true; 
-        };
+            displayCurrentRequirementsInTextarea();
+        }
+
+        function saveGraduationRequirements() {
+            try {
+                localStorage.setItem('graduationRequirementsConfig', JSON.stringify(graduationRequirementsConfig));
+                displayCurrentRequirementsInTextarea();
+                console.log("Graduation requirements saved to localStorage.");
+            } catch (e) {
+                console.error("Failed to save graduation requirements to localStorage.", e);
+                showModal("卒業要件の保存に失敗しました。\n" + e.message);
+            }
+        }
         
-        const isDevDigitalIndustry = (course) => 
-            !course.code.startsWith('OPT') &&
-            isDevelopmentSubject(course) && 
-            (course.rawCourseData?.subjectCategoryIds?.includes('digital_industry') || course.code.startsWith('DIGI-')) && 
-            ["IT産業史", "マンガ産業史", "アニメ産業史", "日本のゲーム産業史"].some(namePart => course.name.includes(namePart));
-        
-        const isDevSocialConnection = (course) => !course.code.startsWith('OPT') && isDevelopmentSubject(course) && (course.rawCourseData?.subjectCategoryIds?.includes('social_connection') || course.code.startsWith('CAR-') || course.name.includes("社会接続"));
+        function displayCurrentRequirementsInTextarea() {
+            if (currentRequirementsTextarea) {
+                 currentRequirementsTextarea.value = JSON.stringify(graduationRequirementsConfig, null, 2);
+            }
+        }
+
+        exportRequirementsButton.addEventListener('click', () => {
+            try {
+                const jsonString = JSON.stringify(graduationRequirementsConfig, null, 2);
+                const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'graduation_requirements.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+                showModal('卒業要件をJSONファイルとしてエクスポートしました。');
+            } catch (error) {
+                console.error("卒業要件エクスポートエラー:", error);
+                showModal(`卒業要件のエクスポートに失敗しました: ${error.message}`);
+            }
+        });
+
+        importRequirementsButton.addEventListener('click', () => {
+            const file = importRequirementsInputFile.files[0];
+            if (!file) {
+                showModal('インポートするJSONファイルを選択してください。');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const importedConfig = JSON.parse(event.target.result);
+                    // Basic validation (can be more thorough)
+                    if (!importedConfig.version || !importedConfig.categories || !importedConfig.totalCreditsRequired) {
+                        throw new Error('無効な卒業要件ファイル形式です。主要なキーが不足しています。');
+                    }
+                    graduationRequirementsConfig = importedConfig;
+                    saveGraduationRequirements();
+                    renderGraduationStatus(); // Update graduation check tab
+                    showModal('卒業要件を正常にインポートし、適用しました。');
+                    importRequirementsInputFile.value = ''; // Reset file input
+                } catch (error) {
+                    console.error('卒業要件インポートエラー:', error);
+                    showModal(`卒業要件のインポートに失敗しました:\n${error.message}\n\nファイル形式が正しいか確認してください。`);
+                }
+            };
+            reader.onerror = () => {
+                showModal('ファイルの読み取り中にエラーが発生しました。');
+            };
+            reader.readAsText(file);
+        });
+
+        resetRequirementsButton.addEventListener('click', () => {
+            if (confirm("本当に卒業要件をデフォルト設定にリセットしますか？この操作は元に戻せません。")) {
+                graduationRequirementsConfig = JSON.parse(JSON.stringify(DEFAULT_GRADUATION_REQUIREMENTS));
+                saveGraduationRequirements();
+                renderGraduationStatus();
+                showModal("卒業要件をデフォルト設定にリセットしました。");
+            }
+        });
+
+
+        // --- Refactored Graduation Requirements Logic ---
+
+        /**
+         * Checks if a course matches a given identification rule set.
+         * @param {object} course - The course object.
+         * @param {object} rules - The identification rules from graduationRequirementsConfig.
+         * @returns {boolean} True if the course matches, false otherwise.
+         */
+        function courseMatchesIdentification(course, rules) {
+            if (!rules) return false;
+
+            if (rules.courseCodes && rules.courseCodes.includes(course.code)) return true;
+            if (rules.startsWith) {
+                if (rules.startsWith.some(prefix => course.code.startsWith(prefix))) return true;
+            }
+            if (rules.nameIncludes) {
+                if (rules.nameIncludes.some(keyword => course.name.includes(keyword))) return true;
+            }
+            if (rules.subjectCategoryIdsFromRaw && course.rawCourseData && course.rawCourseData.subjectCategoryIds) {
+                if (rules.subjectCategoryIdsFromRaw.some(catId => course.rawCourseData.subjectCategoryIds.includes(catId))) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Determines the category information for a course based on the graduation requirements config.
+         * @param {object} course - The course object.
+         * @param {object} config - The graduationRequirementsConfig.
+         * @returns {object|null} An object { categoryId, subCategoryId (optional) } or null if no match.
+         */
+        function getCourseCategoryInfo(course, config) {
+            for (const category of config.categories) {
+                if (category.identification && courseMatchesIdentification(course, category.identification)) {
+                    return { categoryId: category.id, categoryName: category.name };
+                }
+                if (category.subCategories) {
+                    for (const subCategory of category.subCategories) {
+                        if (subCategory.identification && courseMatchesIdentification(course, subCategory.identification)) {
+                            return { categoryId: category.id, subCategoryId: subCategory.id, categoryName: category.name, subCategoryName: subCategory.name };
+                        }
+                    }
+                }
+                // For development subChecks, they are not primary categories but rather checks on development courses.
+                // Primary categorization into 'development' is handled differently (e.g. by isGeneralDevelopmentCategory).
+            }
+            return null;
+        }
 
 
         function checkGraduationRequirements() {
-            let introCredits = 0;
-            let basicMathCredits = 0, basicInfoCredits = 0, basicCultureCredits = 0, 
-                basicSocietyCredits = 0, basicEconomyCredits = 0, basicMultiITCredits = 0;
-            
-            let devTotalCredits = 0; 
-            let devRawTotalCredits = 0; 
-
-            let devCombinedBasicLiteracyCredits = 0;
-            let devCombinedMultiInfoCompCredits = 0;
-            let devCombinedWorldUnderstandingCredits = 0;
-            
-            let devDigitalIndustryCredits = 0; 
-            let devSocialConnectionCredits = 0; 
-            
-            let projectPracticeCredits = 0;
-            let totalEarnedCreditsForGraduation = 0; 
-
-            let coursesInIntro = [];
-            let coursesInBasicMath = [], coursesInBasicInfo = [], coursesInBasicCulture = [],
-                coursesInBasicSociety = [], coursesInBasicEconomy = [], coursesInBasicMultiIT = [];
-            
-            let coursesInDevCombinedBasicLiteracy = new Set(); 
-            let coursesInDevCombinedMultiInfoComp = new Set();
-            let coursesInDevCombinedWorldUnderstanding = new Set();
-            let coursesInDevDigitalIndustry = [];   
-            let coursesInDevSocialConnection = [];
-            let coursesInProjectPractice = [];
-            let gradReqRelevantSelectedCourses = []; 
-
-            selectedCourses.forEach(course => {
-                if (course.code.startsWith('OPT')) {
-                    return; 
-                }
-                gradReqRelevantSelectedCourses.push(course);
-                totalEarnedCreditsForGraduation += course.credits; 
-
-                if (isIntroductory(course)) {
-                    introCredits += course.credits;
-                    coursesInIntro.push(course);
-                } else if (isBasicMathematical(course)) {
-                    basicMathCredits += course.credits;
-                    coursesInBasicMath.push(course);
-                } else if (isBasicInformation(course)) {
-                    basicInfoCredits += course.credits;
-                    coursesInBasicInfo.push(course);
-                } else if (isBasicCultureThought(course)) {
-                    basicCultureCredits += course.credits;
-                    coursesInBasicCulture.push(course);
-                } else if (isBasicSocietyNetwork(course)) {
-                    basicSocietyCredits += course.credits;
-                    coursesInBasicSociety.push(course);
-                } else if (isBasicEconomyMarket(course)) {
-                    basicEconomyCredits += course.credits;
-                    coursesInBasicEconomy.push(course);
-                } else if (isBasicMultilingualITComm(course)) {
-                    basicMultiITCredits += course.credits;
-                    coursesInBasicMultiIT.push(course);
-                } else if (isProjectPractice(course)) {
-                    projectPracticeCredits += course.credits;
-                    coursesInProjectPractice.push(course);
-                } else if (isDevelopmentSubject(course)) {
-                    devRawTotalCredits += course.credits;
-                    if (isDevSocialConnection(course)) { 
-                        devSocialConnectionCredits += course.credits;
-                        coursesInDevSocialConnection.push(course);
-                    }
-                    // Add to specific combined development categories based on prefixes
-                    if (course.code.startsWith('INF-') || course.code.startsWith('MTH-')) {
-                        coursesInDevCombinedBasicLiteracy.add(course);
-                    }
-                    if (course.code.startsWith('LAN-')) { 
-                        coursesInDevCombinedMultiInfoComp.add(course);
-                    }
-                    if (course.code.startsWith('HUM-') || course.code.startsWith('SOC-') || course.code.startsWith('ECON-')) {
-                        coursesInDevCombinedWorldUnderstanding.add(course);
-                    }
-                    // Add to Digital Industry if it matches (subset of World Understanding)
-                    if (isDevDigitalIndustry(course)) { 
-                        devDigitalIndustryCredits += course.credits;
-                        coursesInDevDigitalIndustry.push(course);
-                        // Ensure it's also in the World Understanding Set if not already by prefix
-                        coursesInDevCombinedWorldUnderstanding.add(course); 
-                    }
-                }
-            });
-            
-            // Calculate combined credits from the Sets
-            let tempDevCombinedBasicLiteracyCredits = 0;
-            coursesInDevCombinedBasicLiteracy.forEach(c => tempDevCombinedBasicLiteracyCredits += c.credits);
-            devCombinedBasicLiteracyCredits = tempDevCombinedBasicLiteracyCredits + basicMathCredits + basicInfoCredits;
-            // For display, merge basic courses into the set for combined literacy
-            coursesInBasicMath.forEach(c => coursesInDevCombinedBasicLiteracy.add(c));
-            coursesInBasicInfo.forEach(c => coursesInDevCombinedBasicLiteracy.add(c));
-
-
-            let tempDevCombinedMultiInfoCompCredits = 0;
-            coursesInDevCombinedMultiInfoComp.forEach(c => tempDevCombinedMultiInfoCompCredits += c.credits);
-            devCombinedMultiInfoCompCredits = tempDevCombinedMultiInfoCompCredits + basicMultiITCredits;
-            coursesInBasicMultiIT.forEach(c => coursesInDevCombinedMultiInfoComp.add(c));
-            
-            let tempDevCombinedWorldUnderstandingCredits = 0;
-            coursesInDevCombinedWorldUnderstanding.forEach(c => tempDevCombinedWorldUnderstandingCredits += c.credits);
-            devCombinedWorldUnderstandingCredits = tempDevCombinedWorldUnderstandingCredits + basicCultureCredits + basicSocietyCredits + basicEconomyCredits;
-            coursesInBasicCulture.forEach(c => coursesInDevCombinedWorldUnderstanding.add(c));
-            coursesInBasicSociety.forEach(c => coursesInDevCombinedWorldUnderstanding.add(c));
-            coursesInBasicEconomy.forEach(c => coursesInDevCombinedWorldUnderstanding.add(c));
-
-
-            const basicTotalCredits = basicMathCredits + basicInfoCredits + basicCultureCredits + 
-                                    basicSocietyCredits + basicEconomyCredits + basicMultiITCredits;
-            
-            if (devSocialConnectionCredits > 10) {
-                devTotalCredits = devRawTotalCredits - (devSocialConnectionCredits - 10);
-            } else {
-                devTotalCredits = devRawTotalCredits;
+            const config = graduationRequirementsConfig;
+            if (!config || !config.categories) {
+                console.error("Graduation requirements configuration is missing or invalid.");
+                showModal("卒業要件設定が読み込まれていません。設定をインポートするか、デフォルトにリセットしてください。");
+                return { overallMet: false, total: { req: config.totalCreditsRequired || 124, achieved: 0, met: false, courses: [], details: "設定エラー" }};
             }
 
-            if (devSocialConnectionCredits > 10) { 
-                totalEarnedCreditsForGraduation -= (devSocialConnectionCredits - 10);
-            }
-
-
-            const status = {
-                total: { req: 124, achieved: totalEarnedCreditsForGraduation, met: totalEarnedCreditsForGraduation >= 124, courses: gradReqRelevantSelectedCourses, details: `総取得単位 (OPT除く): ${totalEarnedCreditsForGraduation} / 124単位` },
-                introductory: { name: "導入科目", req: 14, achieved: introCredits, met: introCredits >= 14, courses: coursesInIntro, details: `取得: ${introCredits} / 14単位` },
-                basic: {
-                    name: "基礎科目",
-                    req: 12,
-                    achieved: basicTotalCredits,
-                    met: basicTotalCredits >= 12,
-                    courses: [].concat(coursesInBasicMath, coursesInBasicInfo, coursesInBasicCulture, coursesInBasicSociety, coursesInBasicEconomy, coursesInBasicMultiIT),
-                    details: `合計取得: ${basicTotalCredits} / 12単位`,
-                    subCategories: [
-                        { name: "数理", req: 2, achieved: basicMathCredits, met: basicMathCredits >= 2, courses: coursesInBasicMath },
-                        { name: "情報", req: 2, achieved: basicInfoCredits, met: basicInfoCredits >= 2, courses: coursesInBasicInfo },
-                        { name: "文化・思想", req: 2, achieved: basicCultureCredits, met: basicCultureCredits >= 2, courses: coursesInBasicCulture },
-                        { name: "社会・ネットワーク", req: 2, achieved: basicSocietyCredits, met: basicSocietyCredits >= 2, courses: coursesInBasicSociety },
-                        { name: "経済・マーケット", req: 2, achieved: basicEconomyCredits, met: basicEconomyCredits >= 2, courses: coursesInBasicEconomy },
-                        { name: "多言語ITコミュニケーション", req: 2, achieved: basicMultiITCredits, met: basicMultiITCredits >= 2, courses: coursesInBasicMultiIT }
-                    ],
-                    allSubMet: false 
-                },
-                development: {
-                    name: "展開科目",
-                    req: 74,
-                    achieved: devTotalCredits, 
-                    met: devTotalCredits >= 74,
-                    courses: selectedCourses.filter(c => isDevelopmentSubject(c) && !c.code.startsWith('OPT')), 
-                    details: `合計取得: ${devTotalCredits} / 74単位 (社会接続科目は最大10単位まで算入)`,
-                    subChecks: [
-                        { 
-                            name: "基盤リテラシー科目（基礎科目と合わせて）", 
-                            req: 8, 
-                            achieved: devCombinedBasicLiteracyCredits, 
-                            met: devCombinedBasicLiteracyCredits >= 8,
-                            courses: Array.from(coursesInDevCombinedBasicLiteracy), 
-                            details: `基礎(数理,情報) + 展開(INF-,MTH-など): ${devCombinedBasicLiteracyCredits} / 8単位`
-                        },
-                        { 
-                            name: "多言語情報理解科目（基礎科目と合わせて）", 
-                            req: 8, 
-                            achieved: devCombinedMultiInfoCompCredits, 
-                            met: devCombinedMultiInfoCompCredits >= 8,
-                            courses: Array.from(coursesInDevCombinedMultiInfoComp),
-                            details: `基礎(多言語IT) + 展開(LAN-など): ${devCombinedMultiInfoCompCredits} / 8単位`
-                        },
-                        {
-                            name: "世界理解科目（基礎科目と合わせて）",
-                            req: 26,
-                            achieved: devCombinedWorldUnderstandingCredits,
-                            met: devCombinedWorldUnderstandingCredits >= 26,
-                            courses: Array.from(coursesInDevCombinedWorldUnderstanding), 
-                            details: `基礎(文化思想,社会NW,経済M) + 展開(HUM-,SOC-,ECON-など): ${devCombinedWorldUnderstandingCredits} / 26単位`,
-                            subSubChecks: [ 
-                                { name: "デジタル産業（世界理解科目内）", req: 2, achieved: devDigitalIndustryCredits, met: devDigitalIndustryCredits >= 2, courses: coursesInDevDigitalIndustry }
-                            ],
-                            allSubSubMet: false 
-                        },
-                        { 
-                            name: "社会接続科目", 
-                            max: 10, 
-                            achievedOriginal: devSocialConnectionCredits, 
-                            achievedCounted: Math.min(devSocialConnectionCredits, 10), 
-                            met: true, 
-                            courses: coursesInDevSocialConnection,
-                            details: `取得: ${devSocialConnectionCredits}単位 (卒業要件へは最大10単位まで算入)`
-                        }
-                    ],
-                    allSubChecksMet: false 
-                },
-                projectPractice: { name: "プロジェクト実践", req: 4, achieved: projectPracticeCredits, met: projectPracticeCredits >= 4, courses: coursesInProjectPractice, details: `取得: ${projectPracticeCredits} / 4単位` },
+            // Initialize status object structure based on config
+            let status = {
+                total: { req: config.totalCreditsRequired, achieved: 0, met: false, courses: [], details: "" },
+                categories: {}, // To store credits and courses per category/subCategory
                 overallMet: false
             };
 
-            status.basic.allSubMet = status.basic.subCategories.every(sc => sc.met) && status.basic.met;
-            
-            const worldUnderstandingCheck = status.development.subChecks.find(sc => sc.name.startsWith("世界理解科目"));
-            if (worldUnderstandingCheck) {
-                worldUnderstandingCheck.allSubSubMet = worldUnderstandingCheck.subSubChecks.every(ssc => ssc.met) && worldUnderstandingCheck.met;
+            // Initialize credits and course lists for each category and subCategory
+            config.categories.forEach(cat => {
+                status.categories[cat.id] = {
+                    name: cat.name,
+                    req: cat.creditsRequired,
+                    achieved: 0,
+                    met: false,
+                    courses: [],
+                    details: "",
+                    isGeneralDevelopmentCategory: !!cat.isGeneralDevelopmentCategory,
+                    notes: cat.notes || ""
+                };
+                if (cat.subCategories) {
+                    status.categories[cat.id].subCategories = {};
+                    cat.subCategories.forEach(subCat => {
+                        status.categories[cat.id].subCategories[subCat.id] = {
+                            name: subCat.name,
+                            req: subCat.creditsRequired,
+                            achieved: 0,
+                            met: false,
+                            courses: []
+                        };
+                    });
+                }
+                if (cat.subChecks) { // For development category's sub-requirements
+                    status.categories[cat.id].subChecks = {};
+                     cat.subChecks.forEach(subCheck => {
+                        status.categories[cat.id].subChecks[subCheck.id] = {
+                            name: subCheck.name,
+                            req: subCheck.creditsRequired,
+                            max: subCheck.creditsMax, // For social connection etc.
+                            achieved: 0,
+                            achievedCounted: 0, // For capped credits
+                            met: false,
+                            courses: [],
+                            description: subCheck.description || "",
+                            includeBasicCategoryIds: subCheck.includeBasicCategoryIds || []
+                        };
+                        if (subCheck.subSubChecks) {
+                            status.categories[cat.id].subChecks[subCheck.id].subSubChecks = {};
+                            subCheck.subSubChecks.forEach(ssc => {
+                                status.categories[cat.id].subChecks[subCheck.id].subSubChecks[ssc.id] = {
+                                    name: ssc.name,
+                                    req: ssc.creditsRequired,
+                                    achieved: 0,
+                                    met: false,
+                                    courses: []
+                                };
+                            });
+                        }
+                    });
+                }
+            });
+
+            let gradReqRelevantSelectedCourses = [];
+            let developmentCourses = []; // Courses identified as general development
+
+            // --- Course Categorization and Initial Credit Summation ---
+            selectedCourses.forEach(course => {
+                // Skip excluded courses (e.g., "OPT-")
+                if (config.exclusionPrefixes && config.exclusionPrefixes.some(prefix => course.code.startsWith(prefix))) {
+                    return;
+                }
+                gradReqRelevantSelectedCourses.push(course);
+
+                let categorized = false;
+                for (const catDef of config.categories) {
+                    // Check primary category identification first (e.g., for "introductory", "projectPractice")
+                    if (catDef.identification && courseMatchesIdentification(course, catDef.identification)) {
+                        status.categories[catDef.id].achieved += course.credits;
+                        status.categories[catDef.id].courses.push(course);
+                        categorized = true;
+                        break; 
+                    }
+                    // Check subCategories (e.g., for "basic" sub-types)
+                    if (catDef.subCategories) {
+                        for (const subCatDef of catDef.subCategories) {
+                            if (courseMatchesIdentification(course, subCatDef.identification)) {
+                                status.categories[catDef.id].subCategories[subCatDef.id].achieved += course.credits;
+                                status.categories[catDef.id].subCategories[subCatDef.id].courses.push(course);
+                                // Also add to parent category's total achieved if not already counted
+                                status.categories[catDef.id].achieved += course.credits; 
+                                status.categories[catDef.id].courses.push(course); // Add to main category course list too for overall display
+                                categorized = true;
+                                break;
+                            }
+                        }
+                        if (categorized) break;
+                    }
+                }
+
+                // If not categorized into specific types (intro, basic, project), and it's a development course
+                if (!categorized) {
+                    const devCategoryDef = config.categories.find(c => c.isGeneralDevelopmentCategory);
+                    if (devCategoryDef) {
+                        // This course is considered a "general development" course
+                        developmentCourses.push(course);
+                        status.categories[devCategoryDef.id].achieved += course.credits; // Add to raw development credits
+                        status.categories[devCategoryDef.id].courses.push(course);
+                    }
+                }
+            });
+
+            // --- Process Development SubChecks ---
+            const devCategoryKey = config.categories.find(c => c.isGeneralDevelopmentCategory)?.id;
+            if (devCategoryKey && status.categories[devCategoryKey].subChecks) {
+                const devCatStatus = status.categories[devCategoryKey];
+                
+                // Iterate over development courses to assign them to subChecks
+                developmentCourses.forEach(course => {
+                    config.categories.find(c => c.id === devCategoryKey).subChecks.forEach(subCheckDef => {
+                        if (courseMatchesIdentification(course, subCheckDef.identification)) {
+                            devCatStatus.subChecks[subCheckDef.id].achieved += course.credits;
+                            devCatStatus.subChecks[subCheckDef.id].courses.push(course);
+
+                            // If this subCheck also has subSubChecks (e.g., digital_industry within world_understanding)
+                            if (subCheckDef.subSubChecks) {
+                                subCheckDef.subSubChecks.forEach(sscDef => {
+                                    if (courseMatchesIdentification(course, sscDef.identification)) {
+                                       devCatStatus.subChecks[subCheckDef.id].subSubChecks[sscDef.id].achieved += course.credits;
+                                       devCatStatus.subChecks[subCheckDef.id].subSubChecks[sscDef.id].courses.push(course);
+                                    }
+                                });
+                            }
+                        }
+                    });
+                });
+
+                // Calculate combined credits for subChecks that include basic categories
+                Object.values(devCatStatus.subChecks).forEach(scStatus => {
+                    if (scStatus.includeBasicCategoryIds) {
+                        scStatus.includeBasicCategoryIds.forEach(basicCatIdToInclude => {
+                            // Find the original basic category (it's a subCategory of 'basic')
+                            const basicMainCat = status.categories[config.categories.find(c => c.subCategories?.some(sc => sc.id === basicCatIdToInclude))?.id];
+                            if (basicMainCat && basicMainCat.subCategories && basicMainCat.subCategories[basicCatIdToInclude]) {
+                                scStatus.achieved += basicMainCat.subCategories[basicCatIdToInclude].achieved;
+                                // Add courses from basic to the subCheck's course list for display (optional, can make list long)
+                                // scStatus.courses.push(...basicMainCat.subCategories[basicCatIdToInclude].courses);
+                            }
+                        });
+                    }
+                     // Apply max credits cap if defined (e.g., for social connection)
+                    if (scStatus.max !== undefined) {
+                        scStatus.achievedCounted = Math.min(scStatus.achieved, scStatus.max);
+                    } else {
+                        scStatus.achievedCounted = scStatus.achieved;
+                    }
+                });
             }
-
-            status.development.allSubChecksMet = 
-                status.development.subChecks.find(sc => sc.name.startsWith("基盤リテラシー科目")).met &&
-                status.development.subChecks.find(sc => sc.name.startsWith("多言語情報理解科目")).met &&
-                (worldUnderstandingCheck ? worldUnderstandingCheck.allSubSubMet : false) && 
-                status.development.met; 
-
-            status.overallMet = status.total.met &&
-                                status.introductory.met &&
-                                status.basic.allSubMet &&
-                                status.development.allSubChecksMet && 
-                                status.projectPractice.met;
             
+            // --- Calculate Total Achieved Credits for Graduation (respecting caps) ---
+            let totalGraduationCredits = 0;
+            config.categories.forEach(catDef => {
+                const catStatus = status.categories[catDef.id];
+                if (catDef.isGeneralDevelopmentCategory) {
+                    // For development, sum up `achievedCounted` from subChecks that contribute to the 74-credit rule.
+                    // This logic needs refinement based on how the 74 credits are composed.
+                    // For now, let's assume raw development credits, then adjust for caps.
+                    let devCreditsForTotal = 0;
+                    let socialConnectionOriginalCredits = 0;
+                    let socialConnectionCappedCredits = 0;
+
+                    // Sum all credits from courses identified as 'development'
+                    // Then, identify the social connection credits and apply cap.
+                    let rawDevTotal = 0;
+                    developmentCourses.forEach(dc => rawDevTotal += dc.credits);
+
+                    const socialConnectionSubCheckDef = catDef.subChecks?.find(sc => sc.id === "devSocialConnection"); // Assuming 'devSocialConnection' is the ID
+                    if (socialConnectionSubCheckDef) {
+                        let currentSocialCredits = 0;
+                        developmentCourses.forEach(dc => {
+                            if (courseMatchesIdentification(dc, socialConnectionSubCheckDef.identification)) {
+                                currentSocialCredits += dc.credits;
+                            }
+                        });
+                        socialConnectionOriginalCredits = currentSocialCredits;
+                        socialConnectionCappedCredits = Math.min(currentSocialCredits, socialConnectionSubCheckDef.creditsMax || 10);
+                        
+                        // Adjust rawDevTotal: subtract original social credits, add capped social credits
+                        devCreditsForTotal = rawDevTotal - socialConnectionOriginalCredits + socialConnectionCappedCredits;
+                        catStatus.achieved = devCreditsForTotal; // Update the main development category achieved credits
+                    } else {
+                        devCreditsForTotal = rawDevTotal;
+                        catStatus.achieved = devCreditsForTotal;
+                    }
+                    totalGraduationCredits += devCreditsForTotal;
+
+                } else {
+                    totalGraduationCredits += catStatus.achieved;
+                }
+            });
+            status.total.achieved = totalGraduationCredits;
+            status.total.met = status.total.achieved >= status.total.req;
+            status.total.courses = gradReqRelevantSelectedCourses; // All non-excluded courses
+            status.total.details = `総取得単位 (除外科目除く): ${status.total.achieved} / ${status.total.req}単位`;
+
+
+            // --- Final Met Status Checks ---
+            let allMajorCategoriesMet = true;
+            config.categories.forEach(catDef => {
+                const catStatus = status.categories[catDef.id];
+                catStatus.met = catStatus.achieved >= (catDef.creditsRequired || 0);
+                catStatus.details = `${catStatus.name}: ${catStatus.achieved} / ${catDef.creditsRequired || '-'}単位 ${catStatus.notes || ''}`;
+
+                if (catDef.subCategories) {
+                    let allSubMet = true;
+                    catDef.subCategories.forEach(subCatDef => {
+                        const subCatStatus = catStatus.subCategories[subCatDef.id];
+                        subCatStatus.met = subCatStatus.achieved >= (subCatDef.creditsRequired || 0);
+                        if (!subCatStatus.met) allSubMet = false;
+                    });
+                    catStatus.allSubMet = allSubMet;
+                    if (catDef.allSubCategoriesMustBeMet && !allSubMet) {
+                        catStatus.met = false; // Parent category not met if a required sub isn't
+                    }
+                }
+
+                if (catDef.subChecks) {
+                    let allSubChecksMet = true;
+                    catDef.subChecks.forEach(subCheckDef => {
+                        const scStatus = catStatus.subChecks[subCheckDef.id];
+                        scStatus.met = scStatus.achievedCounted >= (subCheckDef.creditsRequired || 0);
+                        // If it's a 'max' type check (like social connection), it's always "met" in terms of its own rule,
+                        // the cap is applied to the credits counted towards the parent.
+                        if (subCheckDef.creditsMax !== undefined && subCheckDef.creditsRequired === undefined) {
+                            scStatus.met = true;
+                        }
+
+                        if (subCheckDef.subSubChecks) {
+                            let allSSCMet = true;
+                            subCheckDef.subSubChecks.forEach(sscDef => {
+                                const sscStatus = scStatus.subSubChecks[sscDef.id];
+                                sscStatus.met = sscStatus.achieved >= (sscDef.creditsRequired || 0);
+                                if (!sscStatus.met) allSSCMet = false;
+                            });
+                            scStatus.allSubSubMet = allSSCMet;
+                            if (!allSSCMet) scStatus.met = false; // If a sub-sub-check isn't met, the sub-check isn't.
+                        }
+                        if (!scStatus.met) allSubChecksMet = false;
+                    });
+                    catStatus.allSubChecksMet = allSubChecksMet;
+                    // The main 'development' category's 'met' status depends on its total credits AND all its subChecks being met.
+                    if (!allSubChecksMet) catStatus.met = false;
+                }
+                if (!catStatus.met && catDef.creditsRequired > 0) { // Only consider unmet if credits are required
+                     allMajorCategoriesMet = false;
+                }
+            });
+
+            status.overallMet = status.total.met && allMajorCategoriesMet;
             return status;
         }
+
 
         function renderGraduationStatus() {
             const status = checkGraduationRequirements();
             graduationStatusContainer.innerHTML = ''; 
 
-            function createStatusElement(label, item, indentLevel = 0, isSubItem = false) {
+            if (!graduationRequirementsConfig || Object.keys(graduationRequirementsConfig).length === 0 || !status.categories) {
+                 graduationStatusContainer.innerHTML = `<p class="text-red-500">卒業要件設定が読み込まれていません。「卒業要件管理」タブで設定をインポートするか、デフォルトにリセットしてください。</p>`;
+                 return;
+            }
+
+
+            function createStatusElement(label, achieved, required, isMet, courses = [], details = "", indentLevel = 0, notes = "", progressBarType = "standard") {
                 const div = document.createElement('div');
-                div.className = `p-3 rounded-md border ${item.met ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'} ${isSubItem ? 'ml-4' : ''}`;
+                const metClass = isMet ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50';
+                div.className = `p-3 rounded-md border ${metClass} ${indentLevel > 0 ? `ml-${indentLevel * 4}` : ''}`;
                 
-                let achievedText = item.achieved;
-                if (label === "社会接続科目" && item.achievedOriginal !== undefined) {
-                     achievedText = `${item.achievedOriginal} (算入: ${item.achievedCounted})`;
+                const progressPercent = required ? Math.min((achieved / required) * 100, 100) : (isMet ? 100 : 0);
+                let progressText = `${Math.round(progressPercent)}%`;
+                let requirementText = `${achieved} / ${required}単位`;
+
+                if (progressBarType === "capped") { // For social connection like categories
+                    requirementText = `取得: ${achieved}単位 (卒業要件へは最大${required}単位まで算入)`; // Here 'required' is used as 'maxCap'
+                    // Progress bar for capped items might not be as relevant, or show progress towards cap
                 }
 
-                const progressBarId = `progress-${label.replace(/\s+/g, '-').replace(/[()]/g, '')}`; 
-                const progressPercent = item.req ? Math.min((item.achieved / item.req) * 100, 100) : (item.met ? 100 : 0);
-                 
+
                 div.innerHTML = `
                     <div class="flex justify-between items-center">
-                        <span class="font-medium text-gray-700 ${indentLevel > 0 ? `pl-${indentLevel * 4}` : ''}">${label}</span>
-                        <span class="${item.met ? 'text-green-600' : 'text-red-600'} font-semibold">
-                            ${item.met ? '✓ 達成' : '✗ 未達成'}
+                        <span class="font-medium text-gray-700">${label}</span>
+                        <span class="${isMet ? 'text-green-600' : 'text-red-600'} font-semibold">
+                            ${isMet ? '✓ 達成' : '✗ 未達成'}
                         </span>
                     </div>
-                    ${ (item.req || item.max) ? `
-                    <p class="text-sm text-gray-600 mt-1 ${indentLevel > 0 ? `pl-${indentLevel * 4}` : ''}">
-                        ${item.details || (item.max ? `取得: ${achievedText} / 上限${item.max}単位` : `取得: ${achievedText} / ${item.req}単位`)}
+                    <p class="text-sm text-gray-600 mt-1">
+                        ${details || requirementText} ${notes ? `<span class='text-xs italic'>(${notes})</span>` : ''}
                     </p>
-                    ${ (item.req && label !== "社会接続科目") ? `
+                    ${ (required && progressBarType === "standard") ? `
                     <div class="mt-2 progress-bar-bg h-4 w-full">
-                        <div id="${progressBarId}" class="progress-bar h-full text-xs leading-none py-1 text-center text-white" style="width: ${progressPercent}%;">
-                           ${Math.round(progressPercent)}%
+                        <div class="progress-bar h-full text-xs leading-none py-1 text-center text-white" style="width: ${progressPercent}%;">
+                           ${progressText}
                         </div>
                     </div>` : ''}
-                    ` : ''}
-                    ${item.courses && item.courses.length > 0 ? `
-                        <div class="mt-2 text-xs text-gray-500 ${indentLevel > 0 ? `pl-${indentLevel * 4}` : ''}">
-                            <strong>該当講義:</strong>
-                            <ul class="list-disc list-inside ml-2">
-                                ${item.courses.map(c => `<li>${c.name} (${c.credits}単位)</li>`).join('')}
+                    ${courses && courses.length > 0 ? `
+                        <div class="mt-2 text-xs text-gray-500">
+                            <strong>該当講義 (${courses.reduce((sum, c) => sum + c.credits, 0)}単位):</strong>
+                            <ul class="list-disc list-inside ml-2 max-h-24 overflow-y-auto">
+                                ${courses.map(c => `<li>${c.name} (${c.credits}単位)</li>`).join('')}
                             </ul>
                         </div>
-                    ` : (item.req && !item.met ? `<p class="text-xs text-gray-500 mt-1 ${indentLevel > 0 ? `pl-${indentLevel * 4}` : ''}">該当講義なし</p>` : '')}
+                    ` : (required && !isMet ? `<p class="text-xs text-gray-500 mt-1">該当講義なし</p>` : '')}
                 `;
                 return div;
             }
@@ -848,36 +1159,87 @@
                 </p>`;
             graduationStatusContainer.appendChild(overallDiv);
 
-            graduationStatusContainer.appendChild(createStatusElement("総取得単位 (OPT除く)", status.total));
-            graduationStatusContainer.appendChild(createStatusElement(status.introductory.name, status.introductory));
-            
-            const basicDiv = createStatusElement(status.basic.name, { ...status.basic, met: status.basic.allSubMet });
-            status.basic.subCategories.forEach(sub => {
-                basicDiv.appendChild(createStatusElement(sub.name, sub, 1, true));
-            });
-            graduationStatusContainer.appendChild(basicDiv);
+            graduationStatusContainer.appendChild(
+                createStatusElement("総取得単位", status.total.achieved, status.total.req, status.total.met, status.total.courses, status.total.details)
+            );
 
-            const devDiv = createStatusElement(status.development.name, { ...status.development, met: status.development.allSubChecksMet });
-            status.development.subChecks.forEach(subCheck => {
-                const subCheckDiv = createStatusElement(subCheck.name, subCheck, 1, true);
-                 if (subCheck.subSubChecks) { 
-                    subCheck.subSubChecks.forEach(subSubCheck => {
-                        subCheckDiv.appendChild(createStatusElement(subSubCheck.name, {...subSubCheck, parentMet: subCheck.met}, 2, true));
+            // Render categories based on config
+            graduationRequirementsConfig.categories.forEach(catConfig => {
+                const catStatus = status.categories[catConfig.id];
+                if (!catStatus) return;
+
+                const catDiv = createStatusElement(
+                    catStatus.name, 
+                    catStatus.achieved, 
+                    catConfig.creditsRequired, 
+                    catStatus.met, 
+                    catStatus.courses, 
+                    "", // details are part of the main text
+                    0,
+                    catStatus.notes
+                );
+
+                if (catConfig.subCategories && catStatus.subCategories) {
+                    catConfig.subCategories.forEach(subCatConfig => {
+                        const subCatStatus = catStatus.subCategories[subCatConfig.id];
+                        if (!subCatStatus) return;
+                        catDiv.appendChild(
+                            createStatusElement(subCatStatus.name, subCatStatus.achieved, subCatConfig.creditsRequired, subCatStatus.met, subCatStatus.courses, "", 1)
+                        );
                     });
                 }
-                devDiv.appendChild(subCheckDiv);
+
+                if (catConfig.subChecks && catStatus.subChecks) {
+                    catConfig.subChecks.forEach(subCheckConfig => {
+                        const scStatus = catStatus.subChecks[subCheckConfig.id];
+                        if (!scStatus) return;
+                        
+                        let progressBarT = "standard";
+                        let reqValue = subCheckConfig.creditsRequired;
+                        let detailText = scStatus.description || "";
+                        if (subCheckConfig.creditsMax !== undefined && subCheckConfig.creditsRequired === undefined) { // e.g. Social Connection
+                           progressBarT = "capped";
+                           reqValue = subCheckConfig.creditsMax; // Use max as the 'required' for display of cap
+                           detailText += ` (取得:${scStatus.achieved}単位, 算入:${scStatus.achievedCounted}単位 / 上限${subCheckConfig.creditsMax}単位)`;
+                        } else {
+                           detailText += ` (${scStatus.achievedCounted} / ${subCheckConfig.creditsRequired}単位)`;
+                        }
+
+
+                        const scDiv = createStatusElement(
+                            scStatus.name,
+                            scStatus.achievedCounted, // Use achievedCounted for progress bar and met check
+                            reqValue,
+                            scStatus.met,
+                            scStatus.courses,
+                            detailText,
+                            1,
+                            "",
+                            progressBarT
+                        );
+
+                        if (subCheckConfig.subSubChecks && scStatus.subSubChecks) {
+                            subCheckConfig.subSubChecks.forEach(sscConfig => {
+                                const sscStatus = scStatus.subSubChecks[sscConfig.id];
+                                if (!sscStatus) return;
+                                scDiv.appendChild(
+                                    createStatusElement(sscStatus.name, sscStatus.achieved, sscConfig.creditsRequired, sscStatus.met, sscStatus.courses, `(${sscStatus.achieved} / ${sscConfig.creditsRequired}単位)`, 2)
+                                );
+                            });
+                        }
+                        catDiv.appendChild(scDiv);
+                    });
+                }
+                graduationStatusContainer.appendChild(catDiv);
             });
-            graduationStatusContainer.appendChild(devDiv);
-            
-            graduationStatusContainer.appendChild(createStatusElement(status.projectPractice.name, status.projectPractice));
         }
 
         // --- Initialization ---
         async function init() {
+            loadGraduationRequirements(); // Load or set default requirements first
             await fetchLectures(); 
-            loadSelectedCourses(); 
-            renderSelectedCourses();
-            renderGraduationStatus();
+            // loadSelectedCourses() is called within fetchLectures' success path now
+            // renderSelectedCourses() and renderGraduationStatus() also called from there
             document.querySelector('.tab-button[data-tab="courseSelectionTab"]').click();
         }
 
