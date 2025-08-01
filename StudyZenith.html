@@ -453,7 +453,7 @@
 
                     if (data.subjects && Array.isArray(data.subjects)) {
                         data.subjects.forEach(subject => {
-                            if (!accumulatedCoursesRaw.some(existingCourse => existingCourse.code === subject.code)) {
+                            if (!accumulatedCoursesRaw.some(existingCourse => existingCourse.numbering === subject.numbering)) {
                                 accumulatedCoursesRaw.push(subject);
                             }
                         });
@@ -465,8 +465,8 @@
                 }
 
                 allFetchedCourses = accumulatedCoursesRaw.map(course => ({
-                    id: course.code, 
-                    code: course.code,
+                    id: course.numbering, 
+                    code: course.numbering,
                     name: course.name,
                     description: course.description,
                     credits: parseCredits(course.metadata?.credit),
@@ -475,11 +475,13 @@
                 }));
                 
                 loadingMessage.classList.add('hidden');
-                renderAllCourses(allFetchedCourses); 
                 console.log(`全 ${allFetchedCourses.length} 件のユニークな講義データを取得しました。`);
-                // After fetching all courses, try to load selected courses again,
-                // as they depend on allFetchedCourses being populated.
+                
+                // まず履修中講義を読み込む
                 loadSelectedCourses();
+                
+                // その後で講義一覧を表示（履修登録済みフラグが正しく設定される）
+                renderAllCourses(allFetchedCourses); 
                 renderSelectedCourses();
                 renderGraduationStatus();
 
